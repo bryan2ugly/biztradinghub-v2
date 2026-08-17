@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BizTradingHub — log in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0d0c; --panel: #121713; --line: #212b24; --ink: #edf2ee;
+    --dim: #7f9188; --amber: #dda45b; --down: #e0685a;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace; --serif: 'Fraunces', Georgia, serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--ink); font-family:var(--mono);}
+  body{display:flex; align-items:center; justify-content:center; padding:20px;}
+  .card{width:100%; max-width:340px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:32px 28px;}
+  .brand{font-family:var(--serif); font-size:22px; font-weight:600; margin-bottom:4px; text-align:center;}
+  .brand em{color:var(--amber); font-style:normal; font-weight:400;}
+  .sub{color:var(--dim); font-size:12px; text-align:center; margin-bottom:26px;}
+  label{display:block; font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin:14px 0 6px;}
+  input{
+    width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--line); border-radius:6px;
+    color:var(--ink); font-family:var(--mono); font-size:14px;
+  }
+  input:focus{outline:2px solid var(--amber); outline-offset:1px; border-color:var(--amber);}
+  button{
+    width:100%; margin-top:22px; padding:11px; background:var(--amber); color:var(--bg); border:none;
+    border-radius:6px; font-family:var(--mono); font-weight:600; font-size:13px; cursor:pointer;
+  }
+  button:hover{opacity:0.9;}
+  .error{color:var(--down); font-size:12px; margin-top:12px; text-align:center; min-height:14px;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">Biz<em>TradingHub</em></div>
+    <div class="sub">ask whoever shared this with you for a login</div>
+    <form id="loginForm">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Log in</button>
+      <div class="error" id="error"></div>
+    </form>
+  </div>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const errEl = document.getElementById('error');
+  errEl.textContent = '';
+  try{
+    const res = await fetch('/api/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ username, password }),
+    });
+    if (res.ok){
+      window.location.href = '/';
+    } else {
+      const data = await res.json().catch(() => ({}));
+      errEl.textContent = data.detail || 'Login failed';
+    }
+  }catch(err){
+    errEl.textContent = 'Could not reach the server';
+  }
+});
+</script>
+</body>
+</html>

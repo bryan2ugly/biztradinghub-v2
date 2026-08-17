@@ -1,0 +1,1113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BizTradingHub — live BTC read</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{
+    --bg: #0a0d0c;
+    --panel: #121713;
+    --panel-2: #161d18;
+    --line: #212b24;
+    --line-soft: #1a2320;
+    --ink: #edf2ee;
+    --dim: #7f9188;
+    --dim-2: #56645d;
+    --up: #38ba7c;
+    --down: #e0685a;
+    --amber: #dda45b;
+    --blue: #5b9bef;
+    --purple: #b47fe0;
+    --radius: 10px;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    --serif: 'Fraunces', Georgia, serif;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  html,body{
+    margin:0; color:var(--ink); font-family:var(--mono); -webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -5%, rgba(221,164,91,0.08), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(56,186,124,0.06), transparent),
+      var(--bg);
+    background-attachment:fixed;
+  }
+  body{padding-bottom:90px;}
+  a{color:var(--amber);}
+  ::selection{background:rgba(221,164,91,0.3); color:var(--ink);}
+  *:focus-visible{outline:2px solid var(--amber); outline-offset:2px; border-radius:3px;}
+
+  /* thin themed scrollbars for the feed panels */
+  .feed::-webkit-scrollbar{width:8px;}
+  .feed::-webkit-scrollbar-track{background:transparent;}
+  .feed::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px;}
+  .feed::-webkit-scrollbar-thumb:hover{background:var(--dim-2);}
+
+  header{
+    position:sticky; top:0; z-index:10;
+    padding:22px 24px; background:rgba(10,13,12,0.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  header .brand{font-family:var(--serif); font-size:22px; font-weight:600; letter-spacing:0.2px; display:flex; align-items:center; gap:10px; text-shadow:0 0 24px rgba(221,164,91,0.18);}
+  header .brand em{color:var(--amber); font-style:normal; font-weight:400;}
+  header .live-dot{width:7px; height:7px; border-radius:50%; background:var(--up); box-shadow:0 0 0 0 rgba(56,186,124,0.6); animation:pulse 2s infinite;}
+  header .tag{color:var(--dim); font-size:12px;}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(56,186,124,0.5);}
+    70%{box-shadow:0 0 0 6px rgba(56,186,124,0);}
+    100%{box-shadow:0 0 0 0 rgba(56,186,124,0);}
+  }
+  @media (prefers-reduced-motion: reduce){ header .live-dot{animation:none;} }
+
+  main{max-width:1080px; margin:0 auto; padding:0 24px;}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:20px; margin-top:22px;
+  }
+  .grid{display:grid; grid-template-columns: 2fr 1fr; gap:20px;}
+  @media (max-width:820px){ .grid{grid-template-columns: 1fr;} }
+  @media (max-width:640px){
+    header{padding:16px 16px; gap:6px;}
+    header .tag{font-size:11px;}
+    main{padding:0 16px;}
+    .tab-nav{gap:16px;}
+    h2.section-title{font-size:21px;}
+    .pick-badge .pick-value{font-size:19px;}
+  }
+
+  #chart-wrap{position:relative; height:600px; border-radius:6px; overflow:hidden; background:var(--bg);}
+  #chart{position:absolute; inset:0;}
+  #chart-error{
+    display:none; position:absolute; inset:0; align-items:center; justify-content:center;
+    text-align:center; font-size:12px; color:var(--down); padding:20px; background:var(--panel);
+  }
+
+  .hud-row{display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px dashed var(--line-soft); font-size:13px;}
+  .hud-row:last-child{border-bottom:none;}
+  .hud-label{color:var(--dim);}
+  .hud-val{font-weight:600;}
+  .up{color:var(--up);}
+  .down{color:var(--down);}
+  .amber{color:var(--amber);}
+
+  .hud-details{margin-top:10px;}
+  .hud-details summary{
+    font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1.2px;
+    cursor:pointer; padding:8px 2px; list-style:none; display:flex; align-items:center; gap:6px;
+    transition:color 0.15s;
+  }
+  .hud-details summary::-webkit-details-marker{display:none;}
+  .hud-details summary::before{content:'▸'; font-size:10px; transition:transform 0.15s;}
+  .hud-details[open] summary::before{transform:rotate(90deg);}
+  .hud-details summary:hover{color:var(--ink);}
+  .hud-details[open] summary{border-bottom:1px dashed var(--line-soft);}
+
+  .status-pill{
+    display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px;
+    border:1px solid var(--line); color:var(--dim);
+  }
+  .status-pill.live{color:var(--up); border-color:var(--up);}
+
+  .pick-badge{
+    margin: 14px 0 18px; padding: 16px; border-radius: var(--radius); text-align:center;
+    border: 1.5px solid var(--line); transition: background 0.25s, border-color 0.25s;
+  }
+  .pick-badge .pick-label{font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:6px;}
+  .pick-badge .pick-value{font-family:var(--serif); font-size:23px; font-weight:600; letter-spacing:0.2px;}
+  .pick-badge.up{background: rgba(56,186,124,0.10); border-color: var(--up);}
+  .pick-badge.up .pick-value{color: var(--up);}
+  .pick-badge.down{background: rgba(224,104,90,0.10); border-color: var(--down);}
+  .pick-badge.down .pick-value{color: var(--down);}
+  .pick-badge.none{background: transparent; border-color: var(--line);}
+  .pick-badge.none .pick-value{color: var(--dim); font-size:16px; font-family:var(--mono); font-weight:500;}
+  .pick-badge.warn{background: rgba(221,164,91,0.12); border-color: var(--amber);}
+  .pick-badge.warn .pick-value{color: var(--amber); font-size:16px; line-height:1.55; font-family:var(--mono); font-weight:600;}
+  .pick-badge.warn .pick-sub{color: var(--amber); font-weight:400; font-size:12.5px;}
+
+  .tab-nav{
+    display:flex; gap:22px; margin: 44px 0 0; border-bottom:1px solid var(--line);
+    overflow-x:auto; -ms-overflow-style:none; scrollbar-width:none;
+  }
+  .tab-nav::-webkit-scrollbar{display:none;}
+  .tab-btn{
+    background:transparent; border:none; color:var(--dim); font-family:var(--mono);
+    font-size:12.5px; padding:11px 2px; cursor:pointer; white-space:nowrap;
+    border-bottom:2px solid transparent; transition:color 0.15s, border-color 0.15s;
+  }
+  .tab-btn:hover{color:var(--ink);}
+  .tab-btn.active{color:var(--amber); border-bottom-color:var(--amber); font-weight:600;}
+  .tab-panel{display:none; padding-top:32px;}
+  .tab-panel.active{display:block; animation:fadeIn 0.2s ease;}
+  @keyframes fadeIn{from{opacity:0;} to{opacity:1;}}
+  @media (prefers-reduced-motion: reduce){ .tab-panel.active{animation:none;} }
+
+  .why-box{font-size:13px; line-height:1.65; color:var(--ink); margin-top:6px;}
+
+  h2.section-title{
+    font-family:var(--serif); font-weight:600; font-size:25px; margin: 0 0 8px;
+    display:flex; align-items:baseline; gap:12px; letter-spacing:0.1px; position:relative; padding-left:14px;
+  }
+  h2.section-title::before{
+    content:''; position:absolute; left:0; top:4px; bottom:4px; width:3px;
+    background:linear-gradient(var(--amber), var(--up)); border-radius:2px;
+  }
+  .section-sub{color:var(--dim); font-size:13px; margin-bottom:20px; max-width:640px; line-height:1.6;}
+
+  .cards{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:14px;}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:17px;
+    transition: border-color 0.18s, transform 0.18s, background 0.18s;
+  }
+  .card:hover{border-color:var(--dim-2); background:var(--panel-2); transform:translateY(-1px);}
+  .card h3{font-family:var(--serif); font-weight:600; font-size:16px; margin:0 0 8px; display:flex; align-items:center; gap:8px;}
+  .card p{font-size:13px; color:var(--dim); line-height:1.65; margin:0;}
+
+  .bias-tag{
+    font-size:10px; letter-spacing:0.5px; text-transform:uppercase; padding:2px 7px;
+    border-radius:20px; border:1px solid currentColor;
+  }
+  .bias-tag.UP{color:var(--up);}
+  .bias-tag.DOWN{color:var(--down);}
+  .bias-tag.NEUTRAL{color:var(--dim);}
+  .result-tag{font-size:10px; letter-spacing:0.5px; text-transform:uppercase; padding:2px 7px; border-radius:20px; border:1px solid currentColor;}
+  .result-tag.win{color:var(--up);}
+  .result-tag.loss{color:var(--down);}
+  .result-tag.pending{color:var(--amber);}
+
+  .tierlist{display:flex; flex-direction:column; gap:10px;}
+  .tierlist .tier{display:flex; gap:12px; align-items:flex-start; font-size:13px;}
+  .tierlist .dot{width:8px; height:8px; border-radius:50%; margin-top:5px; flex:none;}
+  .tierlist .dot.t1{background:var(--up);}
+  .tierlist .dot.t2{background:var(--amber);}
+  .tierlist .dot.t3{background:var(--dim);}
+
+  .feed{display:flex; flex-direction:column; gap:0; max-height:560px; overflow-y:auto;}
+  .feed-row{
+    display:grid; grid-template-columns: 90px 1fr auto; gap:10px; align-items:center;
+    padding:11px 8px; border-bottom:1px dashed var(--line-soft); font-size:12px;
+    border-radius:6px; transition:background 0.15s;
+  }
+  .feed-row:hover{background:var(--panel-2);}
+  .feed-row:last-child{border-bottom:none;}
+  .feed-time{color:var(--dim);}
+  .feed-empty{color:var(--dim); font-size:13px; padding:14px 8px;}
+  .scanner-panel{margin-top:22px;}
+  .scanner-header{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--line);}
+  .last-closed-box{text-align:right;}
+  .scanner-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:14px;}
+  .scanner-card{background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius); padding:16px; font-size:13px; transition:border-color 0.18s, transform 0.18s;}
+  .scanner-card:hover{border-color:var(--dim-2); transform:translateY(-1px);}
+
+  footer{max-width:1080px; margin:70px auto 0; padding:20px 24px; color:var(--dim-2); font-size:11px; border-top:1px solid var(--line); line-height:1.6;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="live-dot"></span>Biz<em>TradingHub</em></div>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <div class="tag">a live read on BTC 15-min windows — not financial advice</div>
+    <span id="whoamiTag" class="tag" style="color:var(--dim-2);"></span>
+    <button id="logoutBtn" style="background:transparent; border:1px solid var(--line); color:var(--dim); font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:20px; cursor:pointer;">Log out</button>
+  </div>
+</header>
+
+<main>
+
+  <div class="panel">
+    <div class="grid">
+      <div>
+        <div id="chart-wrap">
+          <div id="chart"></div>
+          <div id="chart-error">Chart didn't load. Open your browser console (right-click → Inspect → Console) and tell me what the first red error line says.</div>
+        </div>
+      </div>
+      <div>
+        <div class="hud-row"><span class="hud-label">Status</span><span class="hud-val"><span id="status" class="status-pill">connecting…</span></span></div>
+
+        <div id="pickBadge" class="pick-badge none">
+          <div class="pick-label">Model's current pick</div>
+          <div class="pick-value" id="pickValue">NO CALL YET</div>
+        </div>
+
+        <div id="countdownWrap" style="margin: 4px 0 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+            <span class="hud-label" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">Round closes in</span>
+            <span id="countdownText" style="font-family:var(--serif); font-size:20px; font-weight:600;">—:—</span>
+          </div>
+          <div style="height:5px; background:var(--line); border-radius:4px; overflow:hidden;">
+            <div id="countdownBar" style="height:100%; width:0%; background:var(--amber); transition:width 0.9s linear, background 0.3s;"></div>
+          </div>
+        </div>
+
+        <div class="hud-row"><span class="hud-label">Phase</span><span class="hud-val" id="phase">—</span></div>
+        <div class="hud-row"><span class="hud-label">Signal</span><span class="hud-val" id="signal">—</span></div>
+        <div class="hud-row"><span class="hud-label">Settle UP</span><span class="hud-val up" id="settleUp">—</span></div>
+        <div class="hud-row"><span class="hud-label">Settle DOWN</span><span class="hud-val down" id="settleDown">—</span></div>
+        <div class="hud-row"><span class="hud-label">Regime</span><span class="hud-val amber" id="regime">—</span></div>
+        <div class="hud-row"><span class="hud-label">Session</span><span class="hud-val" id="session">—</span></div>
+        <div class="hud-row"><span class="hud-label">Kalshi strike</span><span class="hud-val amber" id="strike">—</span></div>
+        <div class="hud-row"><span class="hud-label">Model's window ref</span><span class="hud-val" id="windowStrike">—</span></div>
+        <div class="hud-row"><span class="hud-label">Support</span><span class="hud-val" id="support">—</span></div>
+        <div class="hud-row"><span class="hud-label">Resistance</span><span class="hud-val" id="resistance">—</span></div>
+        <div class="hud-row"><span class="hud-label">Minutes left</span><span class="hud-val" id="minsLeft">—</span></div>
+        <div class="hud-row"><span class="hud-label">Tradeable dir</span><span class="hud-val" id="tradeableDir">—</span></div>
+        <div class="hud-row"><span class="hud-label">Too close to call</span><span class="hud-val" id="tooClose">—</span></div>
+        <div class="hud-row"><span class="hud-label">Reversal chance</span><span class="hud-val down" id="reversalPct">—</span></div>
+
+        <details class="hud-details">
+          <summary>Raw indicators</summary>
+          <div class="hud-row"><span class="hud-label">RSI</span><span class="hud-val" id="rsi">—</span></div>
+          <div class="hud-row"><span class="hud-label">EMA fast / slow</span><span class="hud-val" id="ema">—</span></div>
+          <div class="hud-row"><span class="hud-label">Volatility (σ)</span><span class="hud-val" id="vol">—</span></div>
+          <div class="hud-row"><span class="hud-label">ROC / Accel</span><span class="hud-val" id="roc">—</span></div>
+          <div class="hud-row"><span class="hud-label">Body strength</span><span class="hud-val" id="bodyStrength">—</span></div>
+          <div class="hud-row"><span class="hud-label">Calibrated %</span><span class="hud-val" id="calibrated">—</span></div>
+        </details>
+
+        <details class="hud-details">
+          <summary>Tier text</summary>
+          <div class="hud-row"><span class="hud-label">Early Pick</span><span class="hud-val" id="earlyPickText">—</span></div>
+          <div class="hud-row"><span class="hud-label">Value Zone</span><span class="hud-val" id="valueZoneText">—</span></div>
+          <div class="hud-row"><span class="hud-label">Need move</span><span class="hud-val" id="needMoveText">—</span></div>
+          <div class="hud-row"><span class="hud-label">Reversal warning</span><span class="hud-val down" id="reversalText">—</span></div>
+        </details>
+      </div>
+    </div>
+    <div class="panel" style="background:transparent; border:none; padding:14px 0 0;">
+      <div style="font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:1px;">Why it thinks this</div>
+      <div class="why-box" id="why">Waiting for the model to warm up…</div>
+    </div>
+  </div>
+
+  <div class="panel scanner-panel">
+    <div class="scanner-header">
+      <div>
+        <div style="font-size:12px; color:var(--dim); text-transform:uppercase; letter-spacing:1.2px;">Pattern scanner</div>
+        <div style="font-size:11px; color:var(--dim-2); margin-top:2px;">multi-candle structures, checked every 30s</div>
+      </div>
+      <div class="last-closed-box">
+        <div style="font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:1px;">Last closed candle</div>
+        <div id="closedBarPattern" style="font-family:var(--serif); font-size:19px; font-weight:600; color:var(--dim); margin-top:3px;">watching…</div>
+      </div>
+    </div>
+    <div id="scannerRows" class="scanner-grid">
+      <div class="feed-empty">Scanning…</div>
+    </div>
+  </div>
+
+  <div class="tab-nav" id="tabNav">
+    <button class="tab-btn" data-tab="track">Track record</button>
+    <button class="tab-btn" data-tab="candles">Candles 101</button>
+    <button class="tab-btn" data-tab="lines">Chart lines</button>
+    <button class="tab-btn" data-tab="patterns">Patterns (50)</button>
+    <button class="tab-btn" data-tab="tiers">Signal tiers</button>
+    <button class="tab-btn" data-tab="indicators">Indicators</button>
+    <button class="tab-btn" data-tab="regimes">Regimes</button>
+    <button class="tab-btn" data-tab="kalshi">Kalshi basics</button>
+  </div>
+
+  <div class="tab-panel" data-tab="track">
+    <h2 class="section-title">Round-by-round track record</h2>
+    <div class="section-sub">Every 15-min round, in order: the model's first call, the strike it needed to clear, where price actually settled, and whether that first call won.</div>
+    <div class="section-sub" style="color:var(--amber); margin-top:-8px;">
+      <b>This grades only the FIRST call the model made each round</b> — not whether it was right at any other point along the way. A round scored a loss can still have had the model leaning the correct direction later on; the first call locking in doesn't mean the round played out that way start to finish.
+    </div>
+    <div class="panel" id="winLossPanel" style="margin-top:0; padding:16px 20px; display:flex; gap:28px; align-items:baseline; flex-wrap:wrap;">
+      <div><span class="hud-label" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">Wins</span><br><span class="up" style="font-family:var(--serif); font-size:22px; font-weight:600;" id="winCount">0</span></div>
+      <div><span class="hud-label" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">Losses</span><br><span class="down" style="font-family:var(--serif); font-size:22px; font-weight:600;" id="lossCount">0</span></div>
+      <div><span class="hud-label" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">Win rate</span><br><span style="font-family:var(--serif); font-size:22px; font-weight:600;" id="winRate">—</span></div>
+      <div><span class="hud-label" style="font-size:11px; text-transform:uppercase; letter-spacing:1px;">No call made</span><br><span class="hud-val" style="font-size:13px; color:var(--dim);" id="noCallCount">0</span></div>
+    </div>
+    <div class="panel" style="margin-top:14px;">
+      <div class="feed" id="rounds-feed"><div class="feed-empty">Waiting for the first round to complete…</div></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="candles">
+    <h2 class="section-title">Reading a candle</h2>
+    <div class="section-sub">Every candle on the chart above is one minute of BTC price. The body is the range between open and close; the wicks show the high and low the price touched along the way.</div>
+    <div class="cards">
+      <div class="card">
+        <h3>Green (bullish)</h3>
+        <p>Close finished higher than open — buyers were in control for that minute. A string of these with small wicks is a steady uptrend.</p>
+      </div>
+      <div class="card">
+        <h3>Red (bearish)</h3>
+        <p>Close finished lower than open — sellers won that minute. Long red bodies after a rally often mark the start of a pullback.</p>
+      </div>
+      <div class="card">
+        <h3>Wicks</h3>
+        <p>A long wick with a small body means price was rejected — it tried to go further and got pushed back. That's often how the model flags support or resistance.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="lines">
+    <h2 class="section-title">What the lines on the chart mean</h2>
+    <div class="section-sub">These are the exact overlays your bot draws — anchor VWAP, deviation bands, exhaustion markers, support/resistance, and the strike line.</div>
+    <div class="cards">
+      <div class="card"><h3 style="color:#448aff;">Anchor VWAP</h3><p>The volume-weighted average price for the current 15-min window, resetting to zero at the start of every window (that's the "anchor"). It's the model's sense of where price has "really" traded this window, not just where it is right now.</p></div>
+      <div class="card"><h3 style="color:#66bb6a;">Deviation bands</h3><p>The two faded green lines above and below the VWAP are ±1 and ±2 standard deviations of price around it. Price sitting near the outer band means the move is stretched — historically more likely to snap back than keep running.</p></div>
+      <div class="card"><h3 style="color:#ba68c8;">Exhaustion (exh)</h3><p>A purple arrow marks a candle whose wick poked past the outer band but closed back inside it, with the wick bigger than the body — a classic sign buyers or sellers pushed too far and got rejected. Often an early reversal warning.</p></div>
+      <div class="card"><h3>Support / Resistance</h3><p>Flat lines held at the most recent confirmed swing high/low. Price tends to react (bounce or break) when it revisits one of these — the model tracks how many times a level gets "touched" and whether it holds.</p></div>
+      <div class="card"><h3 style="color:#e0a458;">Strike (Kalshi)</h3><p>The dashed amber line is Kalshi's actual strike for the current contract, pulled directly from Kalshi's public market data (no account needed) — not an estimate. If that fetch ever fails, it falls back to the model's own window-open price as a close approximation, and the HUD tells you which one you're looking at.</p></div>
+      <div class="card"><h3>RSI panel</h3><p>The purple line pinned to the bottom of the chart is RSI over time — the same series the model reads for momentum, just visible instead of a single number.</p></div>
+      <div class="card"><h3><span class="up" style="font-size:15px;">●</span>/<span class="down" style="font-size:15px;">●</span> Prediction label</h3><p>Once per 15-min round, a small green "UP" or red "DOWN" chip appears above the candle where the model made its first call for that <em>whole round</em> — not a per-minute signal, just the one prediction that round's outcome gets graded against in the track record tab.</p></div>
+      <div class="card"><h3 style="color:var(--amber);">⚠ Exit / flip warning</h3><p>An amber dot marks the exact bar where the reversal check first flags the held call as at risk of flipping. Your bot's "Confirmed" label deliberately never changes mid-round once locked (see the Signal Tiers tab) — this marker is the closest thing to a live "it might be about to go the other way" signal.</p></div>
+      <div class="card"><h3 style="color:var(--dim);">■ Round end</h3><p>A small square marks the exact bar where each round closed, colored by outcome — green if the first call won, red if it lost, gray if no call fired that round.</p></div>
+      <div class="card"><h3 style="color:var(--amber);">Pattern scanner lines</h3><p>Two amber trendlines mark a bull/bear flag when one's forming — the "pole" is the sharp move, the channel between the lines is the pause after it. A circle marks a double top or double bottom, with a "neckline" price. Both come from checking real trendline math against the last hour of bars, not guesswork — they were tested against random price noise to keep false alarms rare, so if you see one, it cleared a real bar.</p></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="patterns">
+    <h2 class="section-title">Patterns the model actually watches for</h2>
+    <div class="section-sub">All 50 patterns your engine scans for on every bar, with which way each one typically leans. This list is fetched straight from the backend, so it always matches exactly what the model can detect.</div>
+    <div style="position:relative; max-width:340px; margin-bottom:20px;">
+      <input id="patternSearch" type="text" placeholder="Search a pattern name…" autocomplete="off"
+        style="width:100%; padding:10px 14px; background:var(--panel); border:1px solid var(--line); border-radius:8px; color:var(--ink); font-family:var(--mono); font-size:13px;" />
+    </div>
+    <div class="cards" id="pattern-gallery"><div class="feed-empty">Loading pattern catalog…</div></div>
+    <div id="patternNoResults" class="feed-empty" style="display:none;">No pattern matches that search.</div>
+  </div>
+
+  <div class="tab-panel" data-tab="tiers">
+    <h2 class="section-title">How the model calls a signal</h2>
+    <div class="section-sub">The engine doesn't just guess — it runs the live price through momentum, volatility, and support/resistance checks, then only "commits" once enough of them agree. Weakest to strongest:</div>
+    <div class="cards">
+      <div class="card tierlist">
+        <div class="tier"><span class="dot t3"></span><div><b>Value Zone</b> — the earliest heads-up. Model probability just crossed into a lean, contract is usually still cheap.</div></div>
+        <div class="tier"><span class="dot t3"></span><div><b>Early Pick</b> — momentum accelerating in one direction for a couple of bars in a row, with a real-bodied candle behind it.</div></div>
+        <div class="tier"><span class="dot t2"></span><div><b>Early Confirm</b> — Early Pick's conditions held up longer and probability cleared a higher bar. Meaningfully more reliable.</div></div>
+        <div class="tier"><span class="dot t1"></span><div><b>Confirmed</b> — the strongest tier: trend, momentum, and probability all agree over multiple bars. Highest confidence, fires latest.</div></div>
+      </div>
+    </div>
+    <div class="cards" style="margin-top:14px;">
+      <div class="card"><h3 style="color:var(--amber);">Why the pick doesn't always match "Settle %"</h3><p>Once a tier fires, it locks to that direction for the rest of the 15-min round on purpose — so the badge doesn't flip-flop every second as price wiggles. If the raw model probability later swings hard the other way, the pick badge above will show a caution warning instead of silently flipping, and the "Reversal chance" HUD row is exactly this same check, expressed as a %.</p></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="indicators">
+    <h2 class="section-title">The raw indicators panel</h2>
+    <div class="section-sub">These are the numbers in the "Raw indicators" section of the HUD — the actual inputs the model's tiers are built from.</div>
+    <div class="cards">
+      <div class="card"><h3>RSI</h3><p>Relative Strength Index — measures whether recent buying or selling pressure has dominated. Above 70 = overbought (buying pressure stretched), below 30 = oversold.</p></div>
+      <div class="card"><h3>EMA fast / slow</h3><p>Two moving averages at different speeds. When the fast one crosses above the slow one, that's a bullish momentum shift; crossing below is bearish.</p></div>
+      <div class="card"><h3>Volatility (σ)</h3><p>How much price has been swinging recently, measured on log returns. Higher volatility widens the model's uncertainty and tightens its thresholds.</p></div>
+      <div class="card"><h3>ROC / Accel</h3><p>Rate of change over the last 3 bars, and how much that rate is itself speeding up or slowing down — the model's way of catching momentum before it's obvious.</p></div>
+      <div class="card"><h3>Body strength</h3><p>How much of a candle's full range is "body" (open-to-close) vs. wick. A strong body means conviction; a weak one (mostly wick) means indecision.</p></div>
+      <div class="card"><h3>Calibrated %</h3><p>Not the model's raw stated probability — its real historical win rate for calls at this confidence level, so far. If the model says "70%" but those calls have actually won 61% of the time, this shows 61%.</p></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="regimes">
+    <h2 class="section-title">Market regimes</h2>
+    <div class="section-sub">The same signal means different things depending on what kind of market this is. The model classifies the current regime and adjusts how strict it is accordingly.</div>
+    <div class="cards">
+      <div class="card"><h3>Trending</h3><p>Price is making steady directional progress. Momentum signals are trusted more.</p></div>
+      <div class="card"><h3>Range / Choppy</h3><p>Price is bouncing with no clear direction. The model leans on support/resistance instead of momentum.</p></div>
+      <div class="card"><h3>High volatility</h3><p>Big, fast moves. Thresholds tighten so the model doesn't chase every spike.</p></div>
+      <div class="card"><h3>Compression</h3><p>Price is coiling in a tight range, often before a bigger move. The model watches for the breakout direction.</p></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="kalshi">
+    <h2 class="section-title">How a Kalshi 15-min BTC market works</h2>
+    <div class="section-sub">Each contract covers one 15-minute window with a fixed strike price, set near BTC's price at the window's open.</div>
+    <div class="cards">
+      <div class="card"><h3>The question</h3><p>"Will BTC be above or below the strike when this window closes?" The model's job is estimating the real odds of that.</p></div>
+      <div class="card"><h3>The price</h3><p>Contracts trade 1¢–99¢. A price of 62¢ for YES roughly means the market thinks there's a 62% chance it settles YES.</p></div>
+      <div class="card"><h3>Settlement</h3><p>At the window's close, the contract pays out $1 if you were right, $0 if not. The last couple of minutes matter most.</p></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Educational tool. Model output is a probability estimate, not a guarantee — Kalshi contracts can settle either way. Nothing here is financial advice.
+</footer>
+
+<script>
+const API = "";
+
+// --- auth: who's logged in, and a working logout button ---
+(async function initAuth(){
+  try{
+    const res = await fetch('/api/whoami');
+    if (res.ok){
+      const data = await res.json();
+      document.getElementById('whoamiTag').textContent = `logged in as ${data.username}`;
+    }
+  }catch(e){}
+})();
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/login';
+});
+
+// --- round countdown: ticks locally between polls for a live feel ---
+let _countdownAnchorSecs = null;  // seconds remaining, as of the last poll
+let _countdownAnchorAt = null;    // Date.now() at that poll
+const ROUND_LENGTH_SECS = 15 * 60;
+
+function tickCountdown(){
+  const textEl = document.getElementById('countdownText');
+  const barEl = document.getElementById('countdownBar');
+  if (_countdownAnchorSecs === null){ textEl.textContent = '—:—'; barEl.style.width = '0%'; return; }
+  const elapsed = (Date.now() - _countdownAnchorAt) / 1000;
+  const secsLeft = Math.max(0, _countdownAnchorSecs - elapsed);
+  const mm = Math.floor(secsLeft / 60);
+  const ss = Math.floor(secsLeft % 60);
+  textEl.textContent = `${mm}:${String(ss).padStart(2, '0')}`;
+  const pct = Math.max(0, Math.min(100, (secsLeft / ROUND_LENGTH_SECS) * 100));
+  barEl.style.width = pct + '%';
+  barEl.style.background = secsLeft < 60 ? 'var(--down)' : secsLeft < 180 ? 'var(--amber)' : 'var(--up)';
+}
+setInterval(tickCountdown, 1000);
+
+// --- time-of-day session conditions (pure clock math, ET-based) ---
+function updateSessionLabel(){
+  const etHour = parseInt(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', hour12: false,
+  }).format(new Date()), 10);
+  let label;
+  if (etHour >= 8 && etHour < 11) label = 'NY morning open — usually tighter';
+  else if (etHour >= 13 && etHour < 16) label = 'US afternoon — momentum can return';
+  else if (etHour >= 19 && etHour < 22) label = 'Asia open watch — participation shifting';
+  else if (etHour >= 22 || etHour < 6) label = 'Overnight — often thinner, wider swings';
+  else label = 'Regular hours';
+  document.getElementById('session').textContent = label;
+}
+
+// --- pattern scanner: flags + double top/bottom drawn on the chart ---
+let _patternSeries = { upper: null, lower: null };
+function ensurePatternSeries(){
+  if (!series || _patternSeries.upper) return;
+  _patternSeries.upper = chart.addLineSeries({ color: '#dda45b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+  _patternSeries.lower = chart.addLineSeries({ color: '#dda45b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+}
+
+// Flag trendlines are only 2 points (start, end) defining a diagonal --
+// flat-holding the last value would lose that slope, so this extends
+// the same straight line forward to the current time instead, same as
+// a real trendline projection.
+function extendTrendlineToNow(twoPoints){
+  if (!twoPoints || twoPoints.length !== 2) return twoPoints;
+  const [p1, p2] = twoPoints;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (nowSec <= p2.time || p2.time === p1.time) return twoPoints;
+  const slope = (p2.value - p1.value) / (p2.time - p1.time);
+  const projectedValue = p2.value + slope * (nowSec - p2.time);
+  return [p1, p2, { time: nowSec, value: projectedValue }];
+}
+
+async function pollChartPatterns(){
+  if (!series) return;
+  try{
+    const res = await fetch(API + '/api/chart_patterns');
+    const data = await res.json();
+    ensurePatternSeries();
+
+    const rowsEl = document.getElementById('scannerRows');
+    const rows = [];
+    let markers = [];
+
+    if (data.flag){
+      const f = data.flag;
+      _patternSeries.upper.setData(extendTrendlineToNow(f.upper_line));
+      _patternSeries.lower.setData(extendTrendlineToNow(f.lower_line));
+      markers.push({
+        time: f.label_time, position: f.bias === 'UP' ? 'aboveBar' : 'belowBar',
+        shape: 'square', color: '#dda45b', text: `${f.direction} ${f.quality}/100`,
+      });
+      rows.push(`<div class="scanner-card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <span style="color:${f.bias === 'UP' ? 'var(--up)' : 'var(--down)'}; font-weight:600;">${f.direction}</span>
+          <span class="result-tag ${f.quality >= 80 ? 'win' : 'pending'}">${f.quality}/100</span>
+        </div>
+        <div style="color:var(--dim); font-size:11.5px; margin-top:4px;">trigger ${moneyFmt(f.trigger)}<br>invalidate ${moneyFmt(f.invalidate)}</div>
+      </div>`);
+    } else {
+      _patternSeries.upper.setData([]);
+      _patternSeries.lower.setData([]);
+    }
+
+    if (data.double){
+      const d = data.double;
+      markers.push({
+        time: d.label_time, position: d.bias === 'UP' ? 'belowBar' : 'aboveBar',
+        shape: 'circle', color: '#dda45b', text: `${d.name} ${d.quality}/100`,
+      });
+      rows.push(`<div class="scanner-card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <span style="color:${d.bias === 'UP' ? 'var(--up)' : 'var(--down)'}; font-weight:600;">${d.name}</span>
+          <span class="result-tag ${d.quality >= 80 ? 'win' : 'pending'}">${d.quality}/100</span>
+        </div>
+        <div style="color:var(--dim); font-size:11.5px; margin-top:4px;">neckline ${moneyFmt(d.neckline)}</div>
+      </div>`);
+    }
+
+    rowsEl.innerHTML = rows.length ? rows.join('') : '<div class="feed-empty">No flag or double top/bottom currently forming.</div>';
+
+    _scannerMarkers = markers;
+    refreshChartMarkers();
+  }catch(e){ console.error('chart pattern poll failed', e); }
+}
+
+function moneyFmt(v){ return v ? '$' + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0}) : '—'; }
+
+async function pollClosedBarPattern(){
+  try{
+    const res = await fetch(API + '/api/closed_bar_pattern');
+    const d = await res.json();
+    const el = document.getElementById('closedBarPattern');
+    if (!d.pattern){
+      el.textContent = 'no pattern';
+      el.style.color = 'var(--dim)';
+    } else {
+      el.textContent = d.pattern;
+      el.style.color = d.bias === 'UP' ? 'var(--up)' : d.bias === 'DOWN' ? 'var(--down)' : 'var(--dim)';
+    }
+  }catch(e){ console.error('closed bar pattern poll failed', e); }
+}
+
+// --- tabs ---
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabPanels = document.querySelectorAll('.tab-panel');
+function activateTab(name){
+  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  tabPanels.forEach(p => p.classList.toggle('active', p.dataset.tab === name));
+}
+tabBtns.forEach(b => b.addEventListener('click', () => activateTab(b.dataset.tab)));
+activateTab('track');
+
+// --- pattern gallery (matches signal_engine.py's PATTERN_NAMES exactly) ---
+function svgWrap(inner){
+  return `<svg width="40" height="46" viewBox="0 0 40 46" style="flex:none;">${inner}</svg>`;
+}
+function candle(x, bodyTop, bodyBot, wickTop, wickBot, color){
+  return `<line x1="${x}" y1="${wickTop}" x2="${x}" y2="${wickBot}" stroke="${color}" stroke-width="2"/>
+          <rect x="${x-5}" y="${Math.min(bodyTop,bodyBot)}" width="10" height="${Math.max(2,Math.abs(bodyBot-bodyTop))}" fill="${color}"/>`;
+}
+function iconEngulf(dir){
+  const up = dir==='up';
+  const c1 = up ? '#d9614f' : '#3fb87f';
+  const c2 = up ? '#3fb87f' : '#d9614f';
+  return svgWrap(
+    candle(14, 18, 26, 14, 30, c1) +
+    candle(26, up?10:36, up?36:10, 8, 38, c2)
+  );
+}
+function iconHammer(dir){
+  const up = dir==='up';
+  const color = up ? '#3fb87f' : '#d9614f';
+  return svgWrap(up
+    ? candle(20, 8, 14, 6, 40, color)
+    : candle(20, 32, 38, 6, 40, color));
+}
+function iconMarubozu(dir){
+  const color = dir==='up' ? '#3fb87f' : '#d9614f';
+  return svgWrap(candle(20, 8, 38, 8, 38, color));
+}
+function iconPush(dir){
+  const up = dir==='up';
+  const color = up ? '#3fb87f' : '#d9614f';
+  const ys = up ? [[30,38],[20,28],[10,18]] : [[8,16],[18,26],[28,36]];
+  return svgWrap(ys.map((y,i)=>candle(8+i*12, y[0], y[1], y[0]-3, y[1]+3, color)).join(''));
+}
+function iconDoji(){
+  return svgWrap(candle(20, 22, 24, 8, 38, '#8a9690'));
+}
+function iconInside(){
+  return svgWrap(candle(20, 10, 36, 8, 38, '#8a9690') + candle(20, 16, 30, 14, 32, '#e0a458'));
+}
+function biasColor(bias){ return bias==='UP' ? '#3fb87f' : bias==='DOWN' ? '#d9614f' : '#8a9690'; }
+function iconGeneric(candleCount, bias){
+  const color = biasColor(bias);
+  if (candleCount === 1) return svgWrap(candle(20, 16, 30, 8, 38, color));
+  if (candleCount === 2) return svgWrap(candle(13, 18, 30, 10, 36, '#8a9690') + candle(27, 14, 34, 8, 38, color));
+  return svgWrap([0,1,2].map(i => candle(8+i*12, 14+((i%2)*6), 32-((i%2)*4), 8, 38, i===2?color:'#8a9690')).join(''));
+}
+
+// Specific icons + short descriptions for the patterns most worth illustrating
+// precisely; everything else in the 50-pattern catalog gets a generic
+// candle-shape icon (colored by bias) plus a description, both pulled
+// from the backend so the gallery can never drift from what the engine
+// actually detects.
+const ICON_OVERRIDES = {
+  "Bullish Engulfing": iconEngulf('up'), "Bearish Engulfing": iconEngulf('down'),
+  "Hammer": iconHammer('up'), "Shooting Star": iconHammer('down'),
+  "Bullish Marubozu": iconMarubozu('up'), "Bearish Marubozu": iconMarubozu('down'),
+  "3-Bar Push Up": iconPush('up'), "3-Bar Push Down": iconPush('down'),
+  "Doji": iconDoji(), "Inside Bar": iconInside(),
+};
+const DESCRIPTIONS = {
+  "Bullish Engulfing": "A big green candle fully swallows the prior red one — buyers just overpowered the last minute's sellers.",
+  "Bearish Engulfing": "A big red candle fully swallows the prior green one — sellers just took control.",
+  "Hammer": "Small body near the top, long lower wick. Price dropped hard then got rejected and bounced back up.",
+  "Shooting Star": "Small body near the bottom, long upper wick. Price spiked up then got rejected and fell back.",
+  "Bullish Marubozu": "A long green candle with almost no wicks — buyers were in control start to finish.",
+  "Bearish Marubozu": "A long red candle with almost no wicks — sellers were in control start to finish.",
+  "3-Bar Push Up": "Three green candles in a row, each closing higher than the last — sustained momentum.",
+  "3-Bar Push Down": "Three red candles in a row, each closing lower than the last — sustained selling pressure.",
+  "Doji": "Open and close are almost the same price — buyers and sellers fought to a draw.",
+  "Inside Bar": "This candle's whole range sits inside the previous one — the market is compressing.",
+  "Long-Legged Doji": "A doji with long wicks both ways — a wide, indecisive fight with no winner.",
+  "Dragonfly Doji": "Open and close near the top with a long lower wick — sellers pushed down, buyers took it all back.",
+  "Gravestone Doji": "Open and close near the bottom with a long upper wick — buyers pushed up, sellers took it all back.",
+  "Inverted Hammer": "Small body near the bottom, long upper wick, after a downtrend — an early sign buyers are testing back in.",
+  "Hanging Man": "Small body near the top, long lower wick, after an uptrend — a warning sign buyers are losing grip.",
+  "Spinning Top": "Small body with wicks on both sides of similar length — real indecision, not a rejection.",
+  "Bullish Harami": "A small green candle sits inside the prior big red one — the selling is running out of steam.",
+  "Bearish Harami": "A small red candle sits inside the prior big green one — the buying is running out of steam.",
+  "Bullish Harami Cross": "Like Bullish Harami, but the inside candle is a doji — even stronger sign of a stall.",
+  "Bearish Harami Cross": "Like Bearish Harami, but the inside candle is a doji — even stronger sign of a stall.",
+  "Piercing Line": "A red candle followed by a green one that opens lower but closes back above the midpoint — a strong bounce.",
+  "Dark Cloud Cover": "A green candle followed by a red one that opens higher but closes back below the midpoint — a strong pullback.",
+  "Tweezer Bottom": "Two candles with matching lows — price tested the same floor twice and held.",
+  "Tweezer Top": "Two candles with matching highs — price tested the same ceiling twice and failed.",
+  "Bullish Kicker": "A sharp gap up that opens above the prior candle entirely, reversing a downtrend on the spot.",
+  "Bearish Kicker": "A sharp gap down that opens below the prior candle entirely, reversing an uptrend on the spot.",
+  "In Neck Line": "A small bounce that barely creeps back to the prior red candle's close — a weak, likely-to-fail rally.",
+  "Thrusting Line": "A bounce that pushes partway into the prior red candle's body but stalls before the midpoint.",
+  "Bullish Counterattack": "A red candle then a green one that closes at almost the same price — a sudden stop to the decline.",
+  "Bearish Counterattack": "A green candle then a red one that closes at almost the same price — a sudden stop to the rally.",
+  "Morning Star": "Three candles: a big red, a small indecisive one, then a big green — a classic bottoming pattern.",
+  "Evening Star": "Three candles: a big green, a small indecisive one, then a big red — a classic topping pattern.",
+  "Morning Doji Star": "Morning Star, but the middle candle is specifically a doji — a sharper bottom signal.",
+  "Evening Doji Star": "Evening Star, but the middle candle is specifically a doji — a sharper top signal.",
+  "Three White Soldiers": "Three strong green candles in a row, each opening inside and closing above the last — steady conviction.",
+  "Three Black Crows": "Three strong red candles in a row, each opening inside and closing below the last — steady selling.",
+  "Identical Three Crows": "Three Black Crows where each candle opens right at the prior close — relentless, gapless selling.",
+  "Three Stars In The South": "Three shrinking red candles with rising lows — selling pressure fading out.",
+  "Unique Three River Bottom": "A big red candle, a smaller red one making a new low, then a small green one — quiet exhaustion at the bottom.",
+  "Stick Sandwich": "Red, green, red — with the two red candles closing at nearly the same price, sandwiching the bounce.",
+  "Upside Gap Two Crows": "A gap up, then two red candles eating back into the gap — an early crack in a rally.",
+  "Three Outside Up": "A Bullish Engulfing candle followed by a third green candle confirming the reversal.",
+  "Three Outside Down": "A Bearish Engulfing candle followed by a third red candle confirming the reversal.",
+  "Three Inside Up": "A Bullish Harami followed by a third green candle confirming the reversal.",
+  "Three Inside Down": "A Bearish Harami followed by a third red candle confirming the reversal.",
+  "Advance Block": "Three green candles that keep closing higher but with shrinking bodies and longer upper wicks — an uptrend losing energy.",
+  "Deliberation": "Three green candles where the third has a noticeably smaller body — a rally that's hesitating.",
+  "Tri-Star": "Three dojis in a row — extended indecision, often right before a sharp move either way.",
+};
+
+async function loadPatternGallery(){
+  const galleryEl = document.getElementById('pattern-gallery');
+  try{
+    const res = await fetch(API + '/api/pattern_catalog');
+    const catalog = await res.json();
+    galleryEl.innerHTML = catalog.map(p => {
+      const icon = ICON_OVERRIDES[p.name] || iconGeneric(p.candles, p.bias);
+      const desc = DESCRIPTIONS[p.name] || `A ${p.candles}-candle pattern the model watches for, leaning ${p.bias.toLowerCase()}.`;
+      return `
+        <div class="card" data-pattern-name="${p.name.toLowerCase()}">
+          ${icon}
+          <h3 style="margin-top:10px;">${p.name} <span class="bias-tag ${p.bias}">${p.bias}</span></h3>
+          <p>${desc}</p>
+        </div>
+      `;
+    }).join('');
+    applyPatternSearch();
+  }catch(e){
+    console.error('pattern catalog load failed', e);
+    galleryEl.innerHTML = '<div class="feed-empty">Couldn\'t load the pattern list from the backend.</div>';
+  }
+}
+
+function applyPatternSearch(){
+  const query = (document.getElementById('patternSearch').value || '').trim().toLowerCase();
+  const cards = document.querySelectorAll('#pattern-gallery [data-pattern-name]');
+  let visibleCount = 0;
+  cards.forEach(card => {
+    const matches = !query || card.dataset.patternName.includes(query);
+    card.style.display = matches ? '' : 'none';
+    if (matches) visibleCount++;
+  });
+  document.getElementById('patternNoResults').style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+}
+document.getElementById('patternSearch').addEventListener('input', applyPatternSearch);
+
+// clicking the live "last closed candle" readout jumps straight to that
+// pattern's card in the Patterns tab, pre-filled in the search box
+document.getElementById('closedBarPattern').style.cursor = 'pointer';
+document.getElementById('closedBarPattern').addEventListener('click', () => {
+  const name = document.getElementById('closedBarPattern').textContent;
+  if (!name || name === 'watching…' || name === 'no pattern') return;
+  activateTab('patterns');
+  const searchEl = document.getElementById('patternSearch');
+  searchEl.value = name;
+  applyPatternSearch();
+  document.querySelector('.tab-panel[data-tab="patterns"]').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+loadPatternGallery();
+
+// --- chart ---
+let series = null;
+let chart = null;
+let strikeLine = null;
+let vwapSeries, upper1Series, lower1Series, upper2Series, lower2Series, rsiSeries, srSeries;
+try {
+  if (typeof LightweightCharts === 'undefined') throw new Error('LightweightCharts failed to load from CDN');
+  const chartEl = document.getElementById('chart');
+  chart = LightweightCharts.createChart(chartEl, {
+    width: chartEl.clientWidth || 600,
+    height: chartEl.clientHeight || 600,
+    layout: { background: { color: 'transparent' }, textColor: '#8a9690' },
+    grid: { vertLines: { color: '#1a201c' }, horzLines: { color: '#1a201c' } },
+    rightPriceScale: { borderColor: '#232b26' },
+    timeScale: {
+      borderColor: '#232b26', timeVisible: true,
+      tickMarkFormatter: (time) => new Date(time * 1000).toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York',
+      }),
+    },
+    localization: {
+      // force Eastern Time on the chart's own axis labels/crosshair,
+      // regardless of the viewer's system timezone setting
+      timeFormatter: (time) => new Date(time * 1000).toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York',
+      }),
+    },
+  });
+  series = chart.addCandlestickSeries({
+    upColor: '#3fb87f', downColor: '#d9614f', borderVisible: false,
+    wickUpColor: '#3fb87f', wickDownColor: '#d9614f',
+  });
+  vwapSeries = chart.addLineSeries({ color: '#448aff', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: 'Anchor VWAP' });
+  upper1Series = chart.addLineSeries({ color: 'rgba(102,187,106,0.5)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+  lower1Series = chart.addLineSeries({ color: 'rgba(102,187,106,0.5)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+  upper2Series = chart.addLineSeries({ color: 'rgba(102,187,106,0.25)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+  lower2Series = chart.addLineSeries({ color: 'rgba(102,187,106,0.25)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+  // support/resistance step-lines (from overlays.py, on the main price scale)
+  srSeries = chart.addLineSeries({ color: '#e0a458', lineWidth: 1, lineStyle: 3, priceLineVisible: false, lastValueVisible: false });
+  // RSI on its own scale pinned to the bottom fifth of the chart, so it
+  // doesn't distort the price axis.
+  rsiSeries = chart.addLineSeries({
+    color: '#ba68c8', lineWidth: 1, priceScaleId: 'rsi', priceLineVisible: false, lastValueVisible: false,
+  });
+  chart.priceScale('rsi').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, borderVisible: false });
+  new ResizeObserver(entries => {
+    const { width, height } = entries[0].contentRect;
+    if (width > 0 && height > 0) chart.resize(width, height);
+  }).observe(chartEl);
+} catch (e) {
+  console.error('Chart init failed:', e);
+  document.getElementById('chart-error').style.display = 'flex';
+}
+
+let _exhaustionMarkers = [];
+let _predictionMarkers = [];
+let _exitMarkers = [];
+let _roundEndMarkers = [];
+let _scannerMarkers = [];
+let _candleTimeRange = { min: null, max: null };
+function refreshChartMarkers(){
+  if (!series) return;
+  let all = [..._exhaustionMarkers, ..._predictionMarkers, ..._exitMarkers, ..._roundEndMarkers, ..._scannerMarkers];
+  // The candle series and the overlay/marker sources are fetched
+  // independently and can briefly fall out of sync (e.g. after a live
+  // tick stall leaves a real gap in the candle data). A marker whose
+  // time falls outside the candles actually on screen has nowhere valid
+  // to render and piles up at the edge instead -- dropping those here
+  // keeps the chart readable regardless of why the two diverged.
+  if (_candleTimeRange.min !== null){
+    all = all.filter(m => m.time >= _candleTimeRange.min && m.time <= _candleTimeRange.max);
+  }
+  all.sort((a, b) => a.time - b.time);
+  series.setMarkers(all);
+}
+
+// Overlays only recompute every 30s from CLOSED candles, so their raw
+// data always ends a bar or two behind the live, still-forming candle --
+// leaving a visible gap between where each line stops and the current
+// price. This holds the last known value flat forward to right now, so
+// the lines always reach the live edge instead of stopping short. It's
+// a hold-last-value bridge, not a live recompute -- the line will jump
+// to the real new value on the next actual overlay refresh.
+function extendToNow(points){
+  if (!points || !points.length) return points;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const last = points[points.length - 1];
+  if (nowSec > last.time){
+    return [...points, { time: nowSec, value: last.value }];
+  }
+  return points;
+}
+
+async function pollOverlays(){
+  if (!series) return;
+  try{
+    const res = await fetch(API + '/api/overlays');
+    const o = await res.json();
+    if (o.vwap && o.vwap.length){
+      vwapSeries.setData(extendToNow(o.vwap));
+      upper1Series.setData(extendToNow(o.upper1));
+      lower1Series.setData(extendToNow(o.lower1));
+      upper2Series.setData(extendToNow(o.upper2));
+      lower2Series.setData(extendToNow(o.lower2));
+      _exhaustionMarkers = o.exhaustion_markers || [];
+      refreshChartMarkers();
+    }
+    if (o.rsi && o.rsi.length){
+      // lightweight-charts line series can't have NaN values
+      rsiSeries.setData(extendToNow(o.rsi.filter(p => p.value !== null && !Number.isNaN(p.value))));
+    }
+    if (o.resistance && o.resistance.length){
+      // combine resistance+support into one series isn't meaningful (different
+      // levels) -- draw resistance only here to avoid overplotting; support
+      // shown via the HUD number instead, same as before.
+      srSeries.setData(extendToNow(o.resistance));
+    }
+  }catch(e){ console.error('overlay poll failed', e); }
+}
+
+async function pollPredictionMarkers(){
+  if (!series) return;
+  try{
+    const res = await fetch(API + '/api/prediction_markers');
+    const rows = await res.json();
+    // small colored label above the candle instead of an arrow icon --
+    // circle shape keeps the label compact and closer to a chip/bubble
+    // than lightweight-charts' pointier arrow shapes.
+    _predictionMarkers = rows.map(r => ({
+      time: Math.floor(new Date(r.time).getTime() / 1000),
+      position: 'aboveBar',
+      shape: 'circle',
+      color: r.dir === 'UP' ? '#38ba7c' : '#e0685a',
+      text: r.dir,
+    }));
+    refreshChartMarkers();
+  }catch(e){ console.error('prediction marker poll failed', e); }
+}
+
+async function pollExitMarkers(){
+  if (!series) return;
+  try{
+    const res = await fetch(API + '/api/exit_markers');
+    const rows = await res.json();
+    // marks the bar where the reversal check first flagged the held call
+    // as at risk of flipping -- the closest thing to a live "it's about
+    // to change its mind" signal, since Confirmed itself is locked and
+    // never literally flips mid-round.
+    _exitMarkers = rows.map(r => ({
+      time: Math.floor(new Date(r.time).getTime() / 1000),
+      position: 'inBar',
+      shape: 'circle',
+      color: '#dda45b',
+      text: `⚠ exit ${r.against_dir}`,
+    }));
+    refreshChartMarkers();
+  }catch(e){ console.error('exit marker poll failed', e); }
+}
+
+async function pollCandles(){
+  if (!series) return;
+  try{
+    const res = await fetch(API + '/api/candles');
+    const data = await res.json();
+    if (!data.length) return;
+    // defensive: lightweight-charts throws (and can blank the whole chart)
+    // if candle times aren't strictly ascending with no duplicates -- this
+    // should never happen after the backend fix, but if it ever does, drop
+    // the offending points instead of breaking the chart entirely.
+    const clean = [];
+    let lastTime = -Infinity;
+    for (const c of data){
+      if (c.time > lastTime){ clean.push(c); lastTime = c.time; }
+    }
+    if (clean.length !== data.length){
+      console.warn(`candle data had ${data.length - clean.length} out-of-order/duplicate point(s), dropped`);
+    }
+    if (clean.length){
+      series.setData(clean);
+      _candleTimeRange = { min: clean[0].time, max: clean[clean.length - 1].time };
+      refreshChartMarkers();  // candle range changed, re-filter markers against it
+    }
+  }catch(e){ console.error('candle poll failed', e); }
+}
+
+function pctText(v){ return (v === null || v === undefined) ? '—' : v.toFixed(1) + '%'; }
+function moneyText(v){ return (v === null || v === undefined) ? '—' : '$' + Number(v).toLocaleString(undefined,{maximumFractionDigits:0}); }
+
+async function pollState(){
+  try{
+    const res = await fetch(API + '/api/state');
+    const s = await res.json();
+    const statusEl = document.getElementById('status');
+    if (s.status === 'live'){
+      statusEl.textContent = 'live';
+      statusEl.classList.add('live');
+    } else {
+      statusEl.textContent = 'warming up';
+      statusEl.classList.remove('live');
+      return;
+    }
+    // Prominent pick badge -- same tier priority as the backend's own
+    // explanation text (Confirmed > Early Confirm > Value Zone > Early Pick).
+    // Tiers LOCK to whichever direction fired first in the round and don't
+    // flip even if the raw probability swings hard the other way (by
+    // design -- see the Signal Tiers tab). So instead of quietly showing
+    // a stale "UP" while the model now thinks DOWN, flag the conflict.
+    let pickDir = null, pickTier = null;
+    if (s.confirmed_dir && s.confirmed_dir !== 'HOLD'){ pickDir = s.confirmed_dir; pickTier = 'Confirmed'; }
+    else if (s.early_confirm_dir && s.early_confirm_dir !== 'HOLD'){ pickDir = s.early_confirm_dir; pickTier = 'Early Confirm'; }
+    else if (s.value_zone_dir && s.value_zone_dir !== 'NONE'){ pickDir = s.value_zone_dir; pickTier = 'Value Zone'; }
+    else if (s.early_pick_dir && s.early_pick_dir !== 'NONE'){ pickDir = s.early_pick_dir; pickTier = 'Early Pick'; }
+
+    const rawLean = (s.settle_up_pct ?? 0) >= (s.settle_down_pct ?? 0) ? 'UP' : 'DOWN';
+    const rawPct = rawLean === 'UP' ? s.settle_up_pct : s.settle_down_pct;
+    const conflict = pickDir && rawLean !== pickDir && rawPct >= 60;
+
+    const badgeEl = document.getElementById('pickBadge');
+    const pickValEl = document.getElementById('pickValue');
+    if (conflict){
+      badgeEl.className = 'pick-badge warn';
+      const leanColor = rawLean === 'UP' ? 'var(--up)' : 'var(--down)';
+      pickValEl.innerHTML = `<span style="color:${leanColor};">FLIP → ${rawLean} ${rawPct.toFixed(1)}%</span><br><span class="pick-sub">⚠ round locked ${pickDir} (${pickTier}) — that's what gets graded, see reversal chance below</span>`;
+    } else if (pickDir){
+      const pct = pickDir === 'UP' ? s.settle_up_pct : s.settle_down_pct;
+      badgeEl.className = 'pick-badge ' + (pickDir === 'UP' ? 'up' : 'down');
+      pickValEl.textContent = `${pickDir} — ${pickTier} (${pct?.toFixed(1) ?? '—'}%)`;
+    } else {
+      badgeEl.className = 'pick-badge none';
+      pickValEl.textContent = 'NO CALL YET';
+    }
+
+    document.getElementById('phase').textContent = s.phase ?? '—';
+    document.getElementById('signal').textContent = s.hud_signal ?? '—';
+    document.getElementById('settleUp').textContent = pctText(s.settle_up_pct);
+    document.getElementById('settleDown').textContent = pctText(s.settle_down_pct);
+    document.getElementById('regime').textContent = s.regime ?? '—';
+    document.getElementById('strike').textContent = s.kalshi_strike ? moneyText(s.kalshi_strike) : (s.kalshi_strike_error ? `unavailable (${s.kalshi_strike_error})` : '—');
+    document.getElementById('windowStrike').textContent = moneyText(s.window_open_strike);
+    document.getElementById('support').textContent = moneyText(s.support);
+    document.getElementById('resistance').textContent = moneyText(s.resistance);
+    document.getElementById('minsLeft').textContent = (s.minutes_remaining ?? null) === null ? '—' : s.minutes_remaining.toFixed(1);
+    if (s.minutes_remaining !== null && s.minutes_remaining !== undefined){
+      _countdownAnchorSecs = s.minutes_remaining * 60;
+      _countdownAnchorAt = Date.now();
+    }
+    updateSessionLabel();
+    document.getElementById('tradeableDir').textContent = s.tradeable_dir ?? 'none';
+    document.getElementById('tooClose').textContent = s.too_close_to_call ? 'yes' : 'no';
+    if (s.held_dir && s.reversal_chance_pct !== null && s.reversal_chance_pct !== undefined){
+      document.getElementById('reversalPct').textContent = `${s.reversal_chance_pct.toFixed(0)}% (vs held ${s.held_dir})`;
+    } else {
+      document.getElementById('reversalPct').textContent = 'n/a — no call held';
+    }
+
+    document.getElementById('rsi').textContent = (s.rsi_value ?? null) === null ? '—' : s.rsi_value.toFixed(1);
+    document.getElementById('ema').textContent = (s.ema_fast_val && s.ema_slow_val) ? `${s.ema_fast_val.toFixed(1)} / ${s.ema_slow_val.toFixed(1)}` : '—';
+    document.getElementById('vol').textContent = (s.volatility ?? null) === null ? '—' : s.volatility.toFixed(4);
+    document.getElementById('roc').textContent = (s.roc_pct !== undefined) ? `${s.roc_pct.toFixed(2)}% / ${s.accel_pct.toFixed(2)}%` : '—';
+    document.getElementById('bodyStrength').textContent = (s.body_strength ?? null) === null ? '—' : s.body_strength.toFixed(2);
+    document.getElementById('calibrated').textContent = (s.calibrated_pct ?? null) === null ? '—' : s.calibrated_pct.toFixed(1) + '% (' + (s.calibrated_tier ?? '—') + ')';
+
+    document.getElementById('earlyPickText').textContent = s.early_pick_text || '—';
+    document.getElementById('valueZoneText').textContent = s.value_zone_text || '—';
+    document.getElementById('needMoveText').textContent = s.need_move_text || '—';
+    document.getElementById('reversalText').textContent = s.reversal_warning_dir ? (s.reversal_text || s.reversal_warning_dir) : 'none';
+
+    document.getElementById('why').textContent = s.explanation ?? '';
+
+    if (series && (s.kalshi_strike || s.window_open_strike)){
+      if (strikeLine) series.removePriceLine(strikeLine);
+      const strikeVal = s.kalshi_strike || s.window_open_strike;
+      const label = s.kalshi_strike ? 'strike (Kalshi)' : 'strike (model est.)';
+      strikeLine = series.createPriceLine({
+        price: strikeVal, color: '#e0a458', lineWidth: 1, lineStyle: 2,
+        axisLabelVisible: true, title: label,
+      });
+    }
+  }catch(e){ console.error('state poll failed', e); }
+}
+
+async function pollRounds(){
+  try{
+    const res = await fetch(API + '/api/rounds');
+    const rows = await res.json();
+
+    // win/loss tally -- only counts CLOSED rounds where a call actually
+    // fired (skips the still-live round and any round with no call made)
+    let wins = 0, losses = 0, noCall = 0;
+    for (const r of rows){
+      if (r.close_time === null) continue; // still in progress, not scored yet
+      if (r.first_signal_correct === true) wins++;
+      else if (r.first_signal_correct === false) losses++;
+      else noCall++;
+    }
+    const totalScored = wins + losses;
+    document.getElementById('winCount').textContent = wins;
+    document.getElementById('lossCount').textContent = losses;
+    document.getElementById('winRate').textContent = totalScored > 0 ? ((wins / totalScored) * 100).toFixed(1) + '%' : '—';
+    document.getElementById('noCallCount').textContent = noCall;
+
+    // round-end markers on the chart: a small tick at the exact close
+    // bar of each completed round, labeled win/loss.
+    _roundEndMarkers = rows
+      .filter(r => r.close_time)
+      .map(r => ({
+        time: Math.floor(new Date(r.close_time).getTime() / 1000),
+        position: 'belowBar',
+        shape: 'square',
+        color: r.first_signal_correct === true ? '#38ba7c' : r.first_signal_correct === false ? '#e0685a' : '#7f9188',
+        text: 'END',
+      }));
+    refreshChartMarkers();
+
+    const el = document.getElementById('rounds-feed');
+    if (!rows.length){ el.innerHTML = '<div class="feed-empty">Waiting for the first round to complete…</div>'; return; }
+    el.innerHTML = rows.map(r => {
+      const isLive = r.close_time === null;
+      const time = isLive ? 'live' : new Date(r.close_time).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone:'America/New_York'});
+      const call = r.first_signal_dir ? `${r.first_signal_tier}: ${r.first_signal_dir}` : 'no call yet';
+      let resultHtml;
+      if (isLive) {
+        resultHtml = `<span class="result-tag pending">round in progress</span>`;
+      } else if (r.first_signal_correct === null || r.first_signal_correct === undefined) {
+        resultHtml = `<span class="result-tag pending">no call made</span>`;
+      } else {
+        resultHtml = r.first_signal_correct
+          ? `<span class="result-tag win">won</span>`
+          : `<span class="result-tag loss">lost</span>`;
+      }
+      const strikeText = r.strike ? `$${Number(r.strike).toLocaleString(undefined,{maximumFractionDigits:0})}` : '—';
+      const settleText = r.settle_price ? ` → settled $${Number(r.settle_price).toLocaleString(undefined,{maximumFractionDigits:0})} (${r.actual_dir})` : '';
+      return `<div class="feed-row">
+        <span class="feed-time">${time}</span>
+        <span>${call} <span style="color:var(--dim);">— strike ${strikeText}${settleText}</span></span>
+        <span>${resultHtml}</span>
+      </div>`;
+    }).join('');
+  }catch(e){ console.error('rounds poll failed', e); }
+}
+
+updateSessionLabel();
+pollCandles();
+pollState();
+pollRounds();
+pollOverlays();
+pollPredictionMarkers();
+pollExitMarkers();
+pollChartPatterns();
+pollClosedBarPattern();
+setInterval(pollCandles, 5000);
+setInterval(pollState, 2000);
+setInterval(pollRounds, 5000);
+setInterval(pollOverlays, 15000);
+setInterval(pollPredictionMarkers, 5000);
+setInterval(pollExitMarkers, 5000);
+setInterval(pollChartPatterns, 30000);
+setInterval(pollClosedBarPattern, 10000);
+</script>
+
+</body>
+</html>
